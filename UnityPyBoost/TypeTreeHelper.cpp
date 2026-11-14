@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <map>
 #include <type_traits>
@@ -28,34 +29,40 @@ typedef struct TypeTreeReaderConfig
 std::string clean_name(const std::string &name)
 {
     // # keep in sync with TypeTreeNode.py
-    std::string cleaned_name = name;
-    if (cleaned_name.empty())
+    const size_t start = name.compare(0, 6, "(int&)") == 0 ? 6 : 0;
+    std::string cleaned_name;
+    static constexpr auto actions = [] {
+        std::array<unsigned char, 256> table{};
+        table['?'] = table['*'] = 1;
+        table[' '] = table['.'] = table[':'] = 2;
+        table['-'] = table['['] = table[']'] = 2;
+        return table;
+    }();
+    size_t unchanged_end = start;
+    while (unchanged_end < name.size() && actions[static_cast<unsigned char>(name[unchanged_end])] == 0)
     {
-        return cleaned_name;
+        ++unchanged_end;
+    }
+    cleaned_name.reserve(name.size() - start);
+    cleaned_name.append(name, start, unchanged_end - start);
+    for (size_t i = unchanged_end; i < name.size(); ++i)
+    {
+        const char ch = name[i];
+        const unsigned char action = actions[static_cast<unsigned char>(ch)];
+        if (action != 1)
+        {
+            cleaned_name += action == 2 ? '_' : ch;
+        }
     }
 
-    // Remove "(int&)" prefix
-    if (cleaned_name.substr(0, 6) == "(int&)")
-    {
-        cleaned_name = cleaned_name.substr(6);
-    }
-
-    // Remove certain characters
-    cleaned_name = std::regex_replace(cleaned_name, std::regex("[\\?\\*]"), "");
-
-    // Replace certain characters with "_"
-    cleaned_name = std::regex_replace(cleaned_name, std::regex("[ \\.:\\-\\[\\]]"), "_");
-
-    // Append "_" if the name is "pass" or "from"
     if (cleaned_name == "pass" || cleaned_name == "from")
     {
-        cleaned_name += "_";
+        cleaned_name += '_';
     }
 
-    // Prefix with "x" if the name starts with a digit
     if (!cleaned_name.empty() && isdigit(cleaned_name[0]))
     {
-        cleaned_name = "x" + cleaned_name;
+        cleaned_name.insert(cleaned_name.begin(), 'x');
     }
 
     return cleaned_name;
